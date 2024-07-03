@@ -6,13 +6,27 @@ from openai import OpenAI
 from tempfile import NamedTemporaryFile
 import base64
 import openai
+import streamlit.components.v1 as components
+import time
 
 # Streamlit Secrets から API キーを取得
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+api_key = st.secrets.get("OPENAI_API_KEY", "")
 
-# OpenAI APIキーの設定
-api_key = st.sidebar.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY") or "", key="api_key_input")
+# サイドバーでAPIキーを入力できるようにする（オプション）
+api_key = st.sidebar.text_input("OpenAI API Key", type="password", value=api_key, key="api_key_input")
+
+# OpenAI クライアントの初期化
 client = OpenAI(api_key=api_key)
+
+# セッション状態の初期化
+if 'audio_bytes_japanese' not in st.session_state:
+    st.session_state.audio_bytes_japanese = None
+if 'audio_bytes_english' not in st.session_state:
+    st.session_state.audio_bytes_english = None
+if 'messages_japanese' not in st.session_state:
+    st.session_state.messages_japanese = []
+if 'messages_english' not in st.session_state:
+    st.session_state.messages_english = []
 
 # -------------------------------------------------------
 # 関数名
@@ -75,90 +89,174 @@ def translate_text(text, target_lang):
 # 概要
 # OpenAIのTTS APIを使用して、テキストを高品質な音声に変換
 # -------------------------------------------------------
-def text_to_speech(text, voice="alloy"):
+def text_to_speech(text):
     response = client.audio.speech.create(
         model="tts-1",
-        voice=voice,
+        voice="alloy",
         input=text
     )
     return response.content
 
+# -------------------------------------------------------
+# 関数名
+# autoplay_audio
+# 
+# 引数
+# audio_content：バイナリ形式の音声データ
+# 
+# 概要
+# Base64エンコードされた音声データを自動再生するHTMLとJavaScriptを生成し、
+# Streamlitコンポーネントとして表示する
+# -------------------------------------------------------
+def autoplay_audio(audio_content):
+    # バイナリ形式の音声データをBase64エンコードされた文字列に変換
+    audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+    # 音声再生
+    components.html(
+        f"""
+        <script>
+        const audio = new Audio("data:audio/mp3;base64,{audio_base64}");
+        audio.play();
+        </script>
+        """,
+        height=0,
+    )
+
+# -------------------------------------------------------
+# 関数名
+# process_audio
+# 
+# 引数
+# audio_bytes：バイト形式の音声データ
+# source_lang：音声の元の言語
+# target_lang：翻訳先の言語
+# 
+# 概要
+# 音声データを処理し、翻訳と音声合成を行う
+# -------------------------------------------------------
+def process_audio(audio_bytes, source_lang, target_lang):
+
+    # 録音時間が短すぎる場合（例：1秒未満）の処理
+    if len(audio_bytes) < 16000:  # 16kHzのサンプリングレートを仮定
+        st.warning("録音時間が短すぎます。もう一度お試しください。")
+        return
+        
+    transcript = transcribe_audio(audio_bytes)
+    
+    # メッセージの重複をチェック
+    messages = st.session_state.messages_japanese if source_lang == "Japanese" else st.session_state.messages_english
+    if not messages or messages[-1]['content'] != transcript:
+        with st.spinner("処理中..."):
+            translated_text = translate_text(transcript, target_lang)
+        
+            new_message = {
+                "content": transcript,
+                "translated": translated_text,
+                "timestamp": time.time()
+            }
+            messages.append(new_message)
+            
+            audio_content = text_to_speech(translated_text)
+
+            autoplay_audio(audio_content)
+
+            # 音声をStreamlitで再生可能な形式に変換
+            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
+            st.markdown(audio_tag, unsafe_allow_html=True)
+
+
 # アプリのタイトル
-st.title("音声録音、文字起こし、翻訳、音声出力")
+st.title("音声翻訳アプリ")
 
-# 録音用のプレースホルダー
-audio_placeholder = st.empty()
-
-# セッション状態の初期化
-if 'target_lang' not in st.session_state:
-    st.session_state.target_lang = "English"
-if 'audio_bytes' not in st.session_state:
-    st.session_state.audio_bytes = None
-
-# 翻訳先言語の選択
-new_target_lang = st.radio("翻訳先言語を選択してください", ["English", "Japanese"])
-
-# 言語が変更された場合、audio_bytesをリセット
-if new_target_lang != st.session_state.target_lang:
-    st.session_state.target_lang = new_target_lang
-    st.session_state.audio_bytes = None
-    st.experimental_rerun()
-
-# 音声の選択
-# voice = st.selectbox("音声を選択してください", ["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
-voice = "alloy"
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 st.write("※マイクアイコンが表示されない場合はReloadボタンを押してください。")
 st.button("Reload")
 
-# 音声録音
-st.write("以下のマイクアイコンをクリックして録音を開始してください。")
-audio_bytes = audio_recorder(
-    pause_threshold=2.0,
-    recording_color="#e8b62c",
-    neutral_color="#6aa36f",
-    icon_name="microphone",
-    icon_size="5x",
+# レコーダーを横並びに配置
+col1, col2 = st.columns(2)
+
+# 日本語レコーダの処理
+with col1:
+    st.write("Japanese")
+    audio_bytes_japanese = audio_recorder(
+        pause_threshold=2.0,
+        recording_color="#e8b62c",
+        neutral_color="#6aa36f",
+        icon_name="microphone",
+        icon_size="5x",
+        key="recorder_1"
+    )
+
+    if audio_bytes_japanese:
+        st.session_state.audio_bytes_japanese = audio_bytes_japanese
+        process_audio(st.session_state.audio_bytes_japanese, "Japanese", "English")
+
+# 英語レコーダの処理
+with col2:
+    st.write("English")
+    audio_bytes_english = audio_recorder(
+        pause_threshold=2.0,
+        recording_color="#e8b62c",
+        neutral_color="#3498db",
+        icon_name="microphone",
+        icon_size="5x",
+        key="recorder_2"
+    )
+
+    if audio_bytes_english:
+        st.session_state.audio_bytes_english = audio_bytes_english
+        process_audio(st.session_state.audio_bytes_english, "English", "Japanese")
+
+# メッセージ表示エリア
+st.markdown("""
+<style>
+.message-container { display: flex; margin-bottom: 20px; }
+.message-container.left { justify-content: flex-start; }
+.message-container.right { justify-content: flex-end; }
+.message-box-wrapper {
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+.message-box-wrapper.right {
+    align-items: flex-end;
+}
+.message-box {
+    word-wrap: break-word;
+    padding: 10px;
+    border-radius: 10px;
+    margin: 5px 0;
+    border: 1px solid #ddd;
+    max-width: 100%;
+}
+.japanese-message { background-color: #ffffff; color: #333333; }
+.english-message { background-color: #ffffff; color: #333333; }
+.translation.japanese { background-color: #e6f7ff; color: #333333; }
+.translation.english { background-color: #e6ffe6; color: #333333; }
+</style>
+""", unsafe_allow_html=True)
+
+# 日本語と英語のメッセージを時系列順にマージ
+all_messages = sorted(
+    [(msg, 'japanese') for msg in st.session_state.messages_japanese] +
+    [(msg, 'english') for msg in st.session_state.messages_english],
+    key=lambda x: x[0].get('timestamp', 0)
 )
 
-# 音声が録音された場合の処理
-if audio_bytes:
-    st.audio(audio_bytes, format="audio/wav")
+# メッセージ表示(時系列順に表示、言語別に左右に表示)
+for msg, lang in all_messages:
+    align = 'left' if lang == 'japanese' else 'right'
+    message_class = 'japanese-message' if lang == 'japanese' else 'english-message'
+    translation_class = 'english' if lang == 'japanese' else 'japanese'
     
-    with st.spinner("処理中..."):
-        # 音声をテキストに変換
-        transcript = transcribe_audio(audio_bytes)
-        st.success("文字起こしが完了しました")
-        st.write(transcript)
-        
-        # テキストを翻訳
-        translated_text = translate_text(transcript,  st.session_state.target_lang)
-        st.subheader("翻訳結果:")
-        st.write(translated_text)
-        
-        # 翻訳テキストを音声に変換
-        audio_content = text_to_speech(translated_text)
-        
-        # 翻訳テキストを音声に変換
-        audio_content = text_to_speech(translated_text, voice)
-        
-        # 音声の再生（自動再生付き）
-        audio_base64 = base64.b64encode(audio_content).decode('utf-8')
-        audio_tag = f'<audio id="audio" autoplay><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
-        st.markdown(audio_tag, unsafe_allow_html=True)
-
-        # JavaScript for autoplay
-        st.markdown(
-            """
-            <script>
-                var audio = document.getElementById("audio");
-                audio.play();
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # 音声をStreamlitで再生可能な形式に変換
-        audio_base64 = base64.b64encode(audio_content).decode('utf-8')
-        audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
-        st.markdown(audio_tag, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="message-container {align}">
+        <div class="message-box-wrapper {align}">
+            <div class="message-box {message_class}">{msg['content']}</div>
+            <div class="message-box translation {translation_class}">{msg['translated']}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
