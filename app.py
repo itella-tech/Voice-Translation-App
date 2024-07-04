@@ -1,11 +1,8 @@
 import streamlit as st
 from audio_recorder_streamlit import audio_recorder
-import os
-from dotenv import load_dotenv
 from openai import OpenAI
 from tempfile import NamedTemporaryFile
 import base64
-import openai
 import streamlit.components.v1 as components
 import time
 
@@ -132,7 +129,7 @@ def autoplay_audio(audio_content):
 # target_lang：翻訳先の言語
 # 
 # 概要
-# 音声データを処理し、翻訳と音声合成を行う
+# 音声データを処理し、メッセージの翻訳と音声再生を行う
 # -------------------------------------------------------
 def process_audio(audio_bytes, source_lang, target_lang):
 
@@ -141,6 +138,7 @@ def process_audio(audio_bytes, source_lang, target_lang):
         st.warning("録音時間が短すぎます。もう一度お試しください。")
         return
         
+    # 音声をテキストに変換
     transcript = transcribe_audio(audio_bytes)
     
     # メッセージの重複をチェック
@@ -149,22 +147,20 @@ def process_audio(audio_bytes, source_lang, target_lang):
         with st.spinner("処理中..."):
             translated_text = translate_text(transcript, target_lang)
         
+            # 新しいメッセージオブジェクトを作成
             new_message = {
                 "content": transcript,
                 "translated": translated_text,
                 "timestamp": time.time()
             }
+            # メッセージリストに新しいメッセージを追加
             messages.append(new_message)
-            
+
+            # 翻訳されたテキストを音声に変換
             audio_content = text_to_speech(translated_text)
 
+            # 音声を自動再生
             autoplay_audio(audio_content)
-
-            # 音声をStreamlitで再生可能な形式に変換
-            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
-            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
-            st.markdown(audio_tag, unsafe_allow_html=True)
-
 
 # アプリのタイトル
 st.title("音声翻訳アプリ")
@@ -232,20 +228,6 @@ st.markdown("""
     border: 1px solid #ddd;
     max-width: 100%;
 }
-.stButton > button {
-    padding: 0.1rem 0.5rem;
-    font-size: 0.8rem;
-}
-.right-aligned-button {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 5px;
-}
-.play-button {
-    display: inline-block;
-    margin-left: 5px;
-    margin-right: 5px;
-}
 .japanese-message { background-color: #ffffff; color: #333333; }
 .english-message { background-color: #ffffff; color: #333333; }
 .translation.japanese { background-color: #e6f7ff; color: #333333; }
@@ -275,16 +257,14 @@ for i, (msg, lang) in enumerate(all_messages):
     </div>
     """, unsafe_allow_html=True)
 
-    # 再生ボタンの追加
-    button_container = st.empty()
+    # 翻訳音声
+    col1, col2 = st.columns(2)
+    
     if lang == 'japanese':
-        with button_container:
-            if st.button("▷", key=f"play_{i}"):
-                audio_content = text_to_speech(msg['translated'])
-                autoplay_audio(audio_content)
-    else:
-        st.markdown(f'<div class="play-button">', unsafe_allow_html=True)
-        if st.button("▷", key=f"play_{i}"):
+        with col1:
             audio_content = text_to_speech(msg['translated'])
-            autoplay_audio(audio_content)
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.audio(audio_content, format="audio/mp3")
+    else:
+        with col2:
+            audio_content = text_to_speech(msg['translated'])
+            st.audio(audio_content, format="audio/mp3")
