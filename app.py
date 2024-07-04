@@ -260,15 +260,13 @@ for i, (msg, lang) in enumerate(all_messages):
     # 翻訳音声
     col1, col2 = st.columns(2)
     
-    if lang == 'japanese':
-        with col1:
-            audio_content = text_to_speech(msg['translated'])
-            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
-            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
-            st.markdown(audio_tag, unsafe_allow_html=True)
-    else:
-        with col2:
-            audio_content = text_to_speech(msg['translated'])
-            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
-            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
-            st.markdown(audio_tag, unsafe_allow_html=True)
+    # 翻訳されたテキストを音声に変換
+    audio_content = text_to_speech(msg['translated'])
+    # 音声データをBase64エンコードし、文字列に変換
+    audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+    # Base64エンコードされた音声データを使用してHTMLのaudioタグを生成
+    audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
+    
+    # 言語に応じて適切な列に音声プレーヤーを配置
+    with col1 if lang == 'japanese' else col2:
+        st.markdown(audio_tag, unsafe_allow_html=True)
