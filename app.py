@@ -263,8 +263,12 @@ for i, (msg, lang) in enumerate(all_messages):
     if lang == 'japanese':
         with col1:
             audio_content = text_to_speech(msg['translated'])
-            st.audio(audio_content, format="audio/mp3")
+            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
+            st.markdown(audio_tag, unsafe_allow_html=True)
     else:
         with col2:
             audio_content = text_to_speech(msg['translated'])
-            st.audio(audio_content, format="audio/mp3")
+            audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+            audio_tag = f'<audio controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
+            st.markdown(audio_tag, unsafe_allow_html=True)
