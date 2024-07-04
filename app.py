@@ -213,7 +213,7 @@ with col2:
 # メッセージ表示エリア
 st.markdown("""
 <style>
-.message-container { display: flex; margin-bottom: 20px; }
+.message-container { display: flex; margin-bottom: 20px; align-items: flex-start; }
 .message-container.left { justify-content: flex-start; }
 .message-container.right { justify-content: flex-end; }
 .message-box-wrapper {
@@ -232,6 +232,20 @@ st.markdown("""
     border: 1px solid #ddd;
     max-width: 100%;
 }
+.stButton > button {
+    padding: 0.1rem 0.5rem;
+    font-size: 0.8rem;
+}
+.right-aligned-button {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 5px;
+}
+.play-button {
+    display: inline-block;
+    margin-left: 5px;
+    margin-right: 5px;
+}
 .japanese-message { background-color: #ffffff; color: #333333; }
 .english-message { background-color: #ffffff; color: #333333; }
 .translation.japanese { background-color: #e6f7ff; color: #333333; }
@@ -247,11 +261,11 @@ all_messages = sorted(
 )
 
 # メッセージ表示(時系列順に表示、言語別に左右に表示)
-for msg, lang in all_messages:
+for i, (msg, lang) in enumerate(all_messages):
     align = 'left' if lang == 'japanese' else 'right'
     message_class = 'japanese-message' if lang == 'japanese' else 'english-message'
     translation_class = 'english' if lang == 'japanese' else 'japanese'
-    
+     
     st.markdown(f"""
     <div class="message-container {align}">
         <div class="message-box-wrapper {align}">
@@ -260,3 +274,17 @@ for msg, lang in all_messages:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # 再生ボタンの追加
+    button_container = st.empty()
+    if lang == 'japanese':
+        with button_container:
+            if st.button("▷", key=f"play_{i}"):
+                audio_content = text_to_speech(msg['translated'])
+                autoplay_audio(audio_content)
+    else:
+        st.markdown(f'<div class="play-button">', unsafe_allow_html=True)
+        if st.button("▷", key=f"play_{i}"):
+            audio_content = text_to_speech(msg['translated'])
+            autoplay_audio(audio_content)
+        st.markdown('</div>', unsafe_allow_html=True)
